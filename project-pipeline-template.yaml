@@ -1,65 +1,52 @@
-# Staged pipeline with an approval process for production releases.
-#
-# Approvals are not defined here, but rather tied to the environment. 
-#
-# This template deploys:
-# - To the Test environment on commits to the 'main' or 'feature/*' branches (no approval)
-# - To the Prod environment on commits to the 'develop' branch (requires approval)
-
 parameters:
-# The full path to the folder containing the project.json file for this pipeline
-- name: 'projectPath'
-  default: '.'
-  type: string
+  - name: projectPath
+    type: string
+    default: '.'
 
-# The name of the folder to deploy the package to.
-- name: 'folderName'
-  default: ''
-  type: string
+  - name: folderName
+    type: string
+    default: ''
 
-# Either AutoVersion to generate a build number or CurrentVersion to match the project.json version.
-- name: 'versioningStrategy'
-  default: 'CurrentVersion'
-  type: string
+  - name: versioningStrategy
+    type: string
+    default: 'CurrentVersion'
 
-# Not used anymore here — overridden by stage-level values
-- name: 'environments'
-  default: ''
-  type: string
+  - name: environments
+    type: string
+    default: ''
 
-# ------------------ STAGES ------------------
-
-# Stage 1: Build and Pack UiPath project
 stages:
 - stage: Build
   jobs:
-  - job: BuildJob
-    pool: Default
+    - job: BuildJob
+      pool:
+        vmImage: 'windows-latest'
 
-    workspace:
-      clean: all
+      workspace:
+        clean: all
 
-    steps:
-    - script: |
-        echo project path: ${{ parameters.projectPath }}
-        echo folder name: ${{ parameters.folderName }}
-        echo versioning strategy: ${{ parameters.versioningStrategy }}
-        echo environments: ${{ parameters.environments }}
-      displayName: 'Log Parameters'
+      steps:
+        - script: |
+            echo project path: ${{ parameters.projectPath }}
+            echo folder name: ${{ parameters.folderName }}
+            echo versioning strategy: ${{ parameters.versioningStrategy }}
+            echo environments: ${{ parameters.environments }}
+          displayName: 'Log Parameters'
 
-    - task: UiPathInstallPlatform-preview@5
+        - task: UiPathInstallPlatform-preview@5
 
-    - task: UiPathPack@5
-      inputs:
-        versionType: ${{ parameters.versioningStrategy }}
-        projectJsonPath: '$(Build.SourcesDirectory)\${{ parameters.projectPath }}'
-        orchestratorConnection: 'Uipath'
-        outputPath: '$(Build.ArtifactStagingDirectory)\Output'
+        - task: UiPathPack@5
+          inputs:
+            versionType: ${{ parameters.versioningStrategy }}
+            projectJsonPath: '$(Build.SourcesDirectory)\${{ parameters.projectPath }}'
+            orchestratorConnection: 'Uipath'
+            outputPath: '$(Build.ArtifactStagingDirectory)\Output'
 
-    - publish: $(Build.ArtifactStagingDirectory)\Output
-      artifact: drop
+        - publish: '$(Build.ArtifactStagingDirectory)\Output'
+          artifact: drop
 
-# Stage 2: Deploy to Test (main or feature/* branches, no approvals)
+# -------------------------------
+# Deploy to Test (main or feature/*)
 - stage: DeployToTest
   condition: and(
     succeeded('Build'),
@@ -69,52 +56,55 @@ stages:
     )
   )
   jobs:
-  - job: DeployToTestJob
-    pool: Default
+    - job: DeployToTestJob
+      pool:
+        vmImage: 'windows-latest'
 
-    workspace:
-      clean: all
+      workspace:
+        clean: all
 
-    steps:
-    - download: current
-      artifact: drop
+      steps:
+        - download: current
+          artifact: drop
 
-    - task: UiPathInstallPlatform-preview@5
+        - task: UiPathInstallPlatform-preview@5
 
-    - task: UiPathDeploy@5
-      inputs:
-        orchestratorConnection: 'Uipath'
-        packagesPath: '$(Pipeline.Workspace)\drop'
-        folderName: '${{ parameters.folderName }}'
-        environments: 'Test'
+        - task: UiPathDeploy@5
+          inputs:
+            orchestratorConnection: 'Uipath'
+            packagesPath: '$(Pipeline.Workspace)\drop'
+            folderName: ${{ parameters.folderName }}
+            environments: 'Test'
 
-# Stage 3: Deploy to Prod (develop branch, requires approval via DevOps environment)
+# -------------------------------
+# Deploy to Prod (develop branch with approval)
 - stage: DeployToProd
   condition: and(
     succeeded('Build'),
     eq(variables['Build.SourceBranchName'], 'develop')
   )
   jobs:
-  - deployment: DeployToProdJob
-    pool: Default
+    - deployment: DeployToProdJob
+      pool:
+        vmImage: 'windows-latest'
 
-    workspace:
-      clean: all
+      workspace:
+        clean: all
 
-    environment: Production  # Name of the environment in Azure DevOps
+      environment: Production
 
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - download: current
-            artifact: drop
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - download: current
+                artifact: drop
 
-          - task: UiPathInstallPlatform-preview@5
+              - task: UiPathInstallPlatform-preview@5
 
-          - task: UiPathDeploy@5
-            inputs:
-              orchestratorConnection: 'Uipath'
-              packagesPath: '$(Pipeline.Workspace)\drop'
-              folderName: '${{ parameters.folderName }}'
-              environments: 'Prod'
+              - task: UiPathDeploy@5
+                inputs:
+                  orchestratorConnection: 'Uipath'
+                  packagesPath: '$(Pipeline.Workspace)\drop'
+                  folderName: ${{ parameters.folderName }}
+                  environments: 'Prod'
