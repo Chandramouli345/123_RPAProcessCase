@@ -19,8 +19,8 @@ stages:
 - stage: Build
   jobs:
     - job: BuildJob
-      pool:
-        vmImage: 'windows-latest'
+      pool:Default
+       
 
       workspace:
         clean: all
@@ -57,8 +57,8 @@ stages:
   )
   jobs:
     - job: DeployToTestJob
-      pool:
-        vmImage: 'windows-latest'
+      pool:Default
+      
 
       workspace:
         clean: all
@@ -85,8 +85,8 @@ stages:
   )
   jobs:
     - deployment: DeployToProdJob
-      pool:
-        vmImage: 'windows-latest'
+      pool:Default
+        
 
       workspace:
         clean: all
