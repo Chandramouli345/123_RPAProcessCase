@@ -77,8 +77,8 @@ stages:
   condition: and(succeeded('Build'), eq(variables['Build.SourceBranchName'], 'main'))
   jobs:
   - deployment: DeployToProdJob
-    pool:
-     VmImage: 'Ubuntu-latest'
+    pool: Default
+     
 
     workspace:
       clean: all
