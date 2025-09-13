@@ -1,37 +1,31 @@
+# Pipeline template that builds and deploys UiPath project with stage-based approvals
+
 parameters:
-  - name: projectPath
-    type: string
-    default: '.'
+  # Path to the project.json file or its folder
+  projectPath: '.'
 
-  - name: folderName
-    type: string
-    default: ''
+  # Orchestrator folder name to deploy the package
+  folderName: ''
 
-  - name: versioningStrategy
-    type: string
-    default: 'CurrentVersion'
+  # Versioning strategy: CurrentVersion or AutoVersion
+  versioningStrategy: 'CurrentVersion'
 
-  - name: environments
-    type: string
-    default: ''
+  # Environments to update after deployment (can be blank)
+  environments: ''
 
 stages:
+# Stage 1: Build (Package the UiPath process)
 - stage: Build
   jobs:
     - job: BuildJob
-      pool:Default
-       
+      pool: Default
 
       workspace:
         clean: all
 
       steps:
-        - script: |
-            echo project path: ${{ parameters.projectPath }}
-            echo folder name: ${{ parameters.folderName }}
-            echo versioning strategy: ${{ parameters.versioningStrategy }}
-            echo environments: ${{ parameters.environments }}
-          displayName: 'Log Parameters'
+        - script: echo "Building package from path: ${{ parameters.projectPath }}"
+          displayName: 'Log Inputs'
 
         - task: UiPathInstallPlatform-preview@5
 
@@ -45,20 +39,12 @@ stages:
         - publish: '$(Build.ArtifactStagingDirectory)\Output'
           artifact: drop
 
-# -------------------------------
-# Deploy to Test (main or feature/*)
+# Stage 2: Deploy to Test (Only on `main` or `Feature/*`)
 - stage: DeployToTest
-  condition: and(
-    succeeded('Build'),
-    or(
-      startsWith(variables['Build.SourceBranchName'], 'main'),
-      startsWith(variables['Build.SourceBranchName'], 'feature')
-    )
-  )
+  condition: and(succeeded(), or(eq(variables['Build.SourceBranchName'], 'main'), startsWith(variables['Build.SourceBranchName'], 'Feature')))
   jobs:
     - job: DeployToTestJob
-      pool:Default
-      
+      pool: Default
 
       workspace:
         clean: all
@@ -73,25 +59,19 @@ stages:
           inputs:
             orchestratorConnection: 'Uipath'
             packagesPath: '$(Pipeline.Workspace)\drop'
-            folderName: ${{ parameters.folderName }}
-            environments: 'Test'
+            folderName: '${{ parameters.folderName }}'
+            environments: '${{ parameters.environments }}'
 
-# -------------------------------
-# Deploy to Prod (develop branch with approval)
+# Stage 3: Deploy to Prod (Only on `Develop` branch, with environment approval)
 - stage: DeployToProd
-  condition: and(
-    succeeded('Build'),
-    eq(variables['Build.SourceBranchName'], 'develop')
-  )
+  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'Develop'))
   jobs:
     - deployment: DeployToProdJob
-      pool:Default
-        
+      environment: 'Production'  # This must exist in Azure DevOps with approvals set
+      pool: Default
 
       workspace:
         clean: all
-
-      environment: Production
 
       strategy:
         runOnce:
@@ -106,5 +86,5 @@ stages:
                 inputs:
                   orchestratorConnection: 'Uipath'
                   packagesPath: '$(Pipeline.Workspace)\drop'
-                  folderName: ${{ parameters.folderName }}
-                  environments: 'Prod'
+                  folderName: '${{ parameters.folderName }}'
+                  environments: '${{ parameters.environments }}'
